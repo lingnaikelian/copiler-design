@@ -11,14 +11,16 @@ int columnNumber = 1;
     currentToken.column = columnNumber - yyleng; \
     strncpy(currentToken.value, yytext, MAX_TOKEN_LEN - 1); \
     currentToken.value[MAX_TOKEN_LEN - 1] = '\0'; \
-    return currentToken;
+    columnNumber += yyleng; \
+    return t;
 
 #define RETURN_TOKEN_NO_VALUE(t) \
     currentToken.type = t; \
     currentToken.line = lineNumber; \
     currentToken.column = columnNumber - yyleng; \
     currentToken.value[0] = '\0'; \
-    return currentToken;
+    columnNumber += yyleng; \
+    return t;
 
 %}
 
@@ -111,7 +113,7 @@ nl          \n
                 columnNumber += yyleng;
             }
 
-<<EOF>>     { RETURN_TOKEN_NO_VALUE(TOKEN_EOF); }
+<<EOF>>     { currentToken.type = TOKEN_EOF; currentToken.line = lineNumber; currentToken.column = columnNumber; currentToken.value[0] = '\0'; return 0; }
 
 %%
 
@@ -122,8 +124,8 @@ void initLexer(FILE* input) {
 }
 
 Token getNextToken() {
-    columnNumber += yyleng;
-    return yylex();
+    yylex();
+    return currentToken;
 }
 
 void printToken(Token token) {

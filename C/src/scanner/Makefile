@@ -3,7 +3,10 @@ FLEX = flex
 CFLAGS = -Wall -g
 LFLAGS = 
 
-all: scanner
+all: mkdir_bin scanner
+
+mkdir_bin:
+	mkdir -p ../../bin
 
 scanner: scanner.o main.o
 	$(CC) $(CFLAGS) -o ../../bin/scanner scanner.o main.o $(LFLAGS)
