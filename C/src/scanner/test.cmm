@@ -1,0 +1,30 @@
+/* C-- Language Test Program */
+
+int add(int a, int b) {
+    return a + b;
+}
+
+float compute(float x, float y) {
+    return x * y / 2.0;
+}
+
+void main() {
+    int result;
+    float temp;
+    char ch = 'A';
+    
+    result = add(10, 20);
+    temp = compute(3.5, 2.0);
+    
+    if (result > 0) {
+        write(result);
+    } else {
+        write(0);
+    }
+    
+    while (temp < 100.0) {
+        temp = temp * 1.5;
+    }
+    
+    read(result);
+}
