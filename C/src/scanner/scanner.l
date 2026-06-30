@@ -4,6 +4,7 @@
 Token currentToken;
 int lineNumber = 1;
 int columnNumber = 1;
+int errorCount = 0;
 
 #define RETURN_TOKEN(t) \
     currentToken.type = t; \
@@ -71,6 +72,7 @@ nl          \n
 <COMMENT>.  { /* skip */ }
 <COMMENT><<EOF>> { 
     fprintf(stderr, "Error type A at Line %d: unterminated comment\n", lineNumber);
+    errorCount++;
     BEGIN(INITIAL);
 }
 
@@ -117,7 +119,7 @@ nl          \n
 
 {id}         { RETURN_TOKEN(TOKEN_ID); }
 
-.            { fprintf(stderr, "Error type A at Line %d: Mysterious character \"%c\"\n", lineNumber, lex_text[0]); columnNumber += lex_leng; }
+.            { fprintf(stderr, "Error type A at Line %d: Mysterious character \"%c\"\n", lineNumber, lex_text[0]); errorCount++; columnNumber += lex_leng; }
 
 <<EOF>>      { currentToken.type = TOKEN_EOF; currentToken.line = lineNumber; currentToken.column = columnNumber; currentToken.value[0] = '\0'; return 0; }
 

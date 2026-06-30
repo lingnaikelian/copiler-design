@@ -3,8 +3,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-int errorCount = 0;
-
 ASTNode* createNode(NodeType type, int line) {
     ASTNode* node = (ASTNode*)malloc(sizeof(ASTNode));
     node->nodeType = type;

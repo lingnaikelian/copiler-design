@@ -51,6 +51,7 @@ extern Token currentToken;
 extern int lineNumber;
 extern int columnNumber;
 extern FILE* lex_in;
+extern int errorCount;
 
 void initLexer(FILE* input);
 Token getNextToken();

@@ -51,8 +51,6 @@ int yylex() {
         case TOKEN_WHILE: return WHILE;
         case TOKEN_EOF: return 0;
         default:
-            fprintf(stderr, "Error type A at Line %d: Mysterious character\n", lineNumber);
-            errorCount++;
             return yylex();
     }
 }
