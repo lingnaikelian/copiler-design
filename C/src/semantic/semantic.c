@@ -572,38 +572,104 @@ static void traverseExtDef(ASTNode* extDef) {
             if (extDecList->nodeType == NODE_FUNDEC) {
                 ASTNode* idNode = extDecList->children[0];
                 ASTNode* varList = extDecList->children[2];
-                ASTNode* compSt = extDef->children[2];
+                int isDecl = 0;
+                if (extDef->childCount >= 3) {
+                    ASTNode* lastChild = extDef->children[2];
+                    if (lastChild != NULL && lastChild->nodeType == NODE_TOKEN && lastChild->tokenType == SEMI) {
+                        isDecl = 1;
+                    }
+                }
                 
                 if (idNode != NULL && idNode->tokenType == ID) {
                     char* name = idNode->attr.value;
                     Type* returnType = getTypeFromSpecifier(specifier);
                     Symbol* existing = lookupSymbol(currentTable, name);
-                    if (existing != NULL && existing->kind == KIND_FUNCTION) {
-                        fprintf(stderr, "Error type 4 at Line %d: Redefined function \"%s\".\n", extDef->line, name);
-                        errorCount++;
-                    } else if (existing != NULL && existing->kind == KIND_VARIABLE) {
-                        fprintf(stderr, "Error type 4 at Line %d: Redefined function \"%s\".\n", extDef->line, name);
-                        errorCount++;
+                    
+                    Type* funcType = createFunctionType(returnType, 0, NULL);
+                    Symbol* funcSym = createSymbol(name, KIND_FUNCTION, funcType, extDef->line);
+                    funcSym->isDeclaration = isDecl ? 1 : 0;
+                    if (varList != NULL && varList->nodeType == NODE_VARLIST) {
+                        collectParams(varList, funcSym);
+                    }
+                    
+                    if (isDecl) {
+                        if (existing != NULL && existing->kind == KIND_FUNCTION) {
+                            if (!existing->isDeclaration) {
+                                fprintf(stderr, "Error type 19 at Line %d: Inconsistent declaration of function \"%s\".\n", extDef->line, name);
+                                errorCount++;
+                            } else {
+                                int conflict = 0;
+                                if (!compareTypes(existing->type, funcType)) conflict = 1;
+                                if (existing->paramCount != funcSym->paramCount) conflict = 1;
+                                if (!conflict) {
+                                    for (int i = 0; i < existing->paramCount; i++) {
+                                        if (!compareTypes(existing->paramTypes[i], funcSym->paramTypes[i])) {
+                                            conflict = 1;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (conflict) {
+                                    fprintf(stderr, "Error type 19 at Line %d: Inconsistent declaration of function \"%s\".\n", extDef->line, name);
+                                    errorCount++;
+                                }
+                            }
+                        } else {
+                            insertSymbol(currentTable, funcSym);
+                        }
                     } else {
-                        Type* funcType = createFunctionType(returnType, 0, NULL);
-                        Symbol* funcSym = createSymbol(name, KIND_FUNCTION, funcType, extDef->line);
-                        insertSymbol(currentTable, funcSym);
-                        
-                        Type* savedReturnType = currentReturnType;
-                        int savedInFunction = inFunction;
-                        currentReturnType = returnType;
-                        inFunction = 1;
-                        
-                        if (varList != NULL && varList->nodeType == NODE_VARLIST) {
-                            collectParams(varList, funcSym);
+                        if (existing != NULL && existing->kind == KIND_FUNCTION) {
+                            if (!existing->isDeclaration) {
+                                fprintf(stderr, "Error type 4 at Line %d: Redefined function \"%s\".\n", extDef->line, name);
+                                errorCount++;
+                            } else {
+                                int conflict = 0;
+                                if (!compareTypes(existing->type, funcType)) conflict = 1;
+                                if (existing->paramCount != funcSym->paramCount) conflict = 1;
+                                if (!conflict) {
+                                    for (int i = 0; i < existing->paramCount; i++) {
+                                        if (!compareTypes(existing->paramTypes[i], funcSym->paramTypes[i])) {
+                                            conflict = 1;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (conflict) {
+                                    fprintf(stderr, "Error type 19 at Line %d: Inconsistent declaration of function \"%s\".\n", extDef->line, name);
+                                    errorCount++;
+                                }
+                                existing->isDeclaration = 0;
+                                
+                                Type* savedReturnType = currentReturnType;
+                                int savedInFunction = inFunction;
+                                currentReturnType = returnType;
+                                inFunction = 1;
+                                
+                                if (extDef->childCount >= 3 && extDef->children[2] != NULL && extDef->children[2]->nodeType == NODE_COMPST) {
+                                    traverseStmt(extDef->children[2]);
+                                }
+                                
+                                currentReturnType = savedReturnType;
+                                inFunction = savedInFunction;
+                            }
+                        } else if (existing != NULL && existing->kind != KIND_FUNCTION) {
+                            fprintf(stderr, "Error type 4 at Line %d: Redefined function \"%s\".\n", extDef->line, name);
+                            errorCount++;
+                        } else {
+                            insertSymbol(currentTable, funcSym);
+                            
+                            Type* savedReturnType = currentReturnType;
+                            int savedInFunction = inFunction;
+                            currentReturnType = returnType;
+                            inFunction = 1;
+                            
+                            if (extDef->childCount >= 3 && extDef->children[2] != NULL && extDef->children[2]->nodeType == NODE_COMPST) {
+                                traverseStmt(extDef->children[2]);
+                            }
+                            
+                            currentReturnType = savedReturnType;
+                            inFunction = savedInFunction;
                         }
-                        
-                        if (compSt != NULL) {
-                            traverseStmt(compSt);
-                        }
-                        
-                        currentReturnType = savedReturnType;
-                        inFunction = savedInFunction;
                     }
                 }
             } else if (extDecList->nodeType == NODE_EXTDECLIST || extDecList->nodeType == NODE_VARDEC) {
@@ -659,5 +725,14 @@ void semanticAnalysis(ASTNode* root) {
     inFunction = 0;
     if (root != NULL && root->nodeType == NODE_PROGRAM) {
         traverseExtDefList(root->children[0]);
+    }
+    
+    Symbol* s = currentTable->head;
+    while (s != NULL) {
+        if (s->kind == KIND_FUNCTION && s->isDeclaration) {
+            fprintf(stderr, "Error type 18 at Line %d: Undefined function \"%s\".\n", s->line, s->name);
+            errorCount++;
+        }
+        s = s->next;
     }
 }

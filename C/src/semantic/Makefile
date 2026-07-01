@@ -51,8 +51,8 @@ test: $(TARGET)
 	./$(TARGET) test_s1.cmm
 
 batch_test: $(TARGET)
-	@echo "=== Running all 17 test cases ==="
-	@for i in $$(seq 1 17); do \
+	@echo "=== Running all 19 test cases ==="
+	@for i in $$(seq 1 19); do \
 		echo "--- test_s$${i}.cmm ---"; \
 		./$(TARGET) test_s$${i}.cmm; \
 		echo; \

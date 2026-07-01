@@ -59,6 +59,7 @@ ExtDefList : ExtDef ExtDefList { $$ = createNode(NODE_EXTDEFLIST, $1->line); add
 ExtDef : Specifier ExtDecList SEMI { $$ = createNode(NODE_EXTDEF, $1->line); addChild($$, $1); addChild($$, $2); addChild($$, createToken($1->line, SEMI)); }
        | Specifier SEMI { $$ = createNode(NODE_EXTDEF, $1->line); addChild($$, $1); addChild($$, createToken($1->line, SEMI)); }
        | Specifier FunDec CompSt { $$ = createNode(NODE_EXTDEF, $1->line); addChild($$, $1); addChild($$, $2); addChild($$, $3); }
+       | Specifier FunDec SEMI { $$ = createNode(NODE_EXTDEF, $1->line); addChild($$, $1); addChild($$, $2); addChild($$, createToken($1->line, SEMI)); }
        ;
 
 Specifier : TYPE { $$ = createNode(NODE_SPECIFIER, @1.first_line); addChild($$, createTokenStr(@1.first_line, TYPE, $1)); }

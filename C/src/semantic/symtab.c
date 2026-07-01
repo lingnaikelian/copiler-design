@@ -136,5 +136,6 @@ Symbol* createSymbol(char* name, SymbolKind kind, Type* type, int line) {
     s->next = NULL;
     s->paramCount = 0;
     s->paramTypes = (Type**)malloc(sizeof(Type*) * 32);
+    s->isDeclaration = 0;
     return s;
 }

@@ -36,6 +36,7 @@ typedef struct Symbol {
     struct Symbol* next;
     int paramCount;
     Type** paramTypes;
+    int isDeclaration;
 } Symbol;
 
 typedef struct SymbolTable {
