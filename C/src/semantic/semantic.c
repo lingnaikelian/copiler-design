@@ -16,12 +16,16 @@ static void processStructFields(ASTNode* defList, Symbol* structSym, int structL
 
 static Type* getTypeFromSpecifier(ASTNode* specifier) {
     if (specifier == NULL) return NULL;
+    if (specifier->childCount < 1) return NULL;
     ASTNode* child = specifier->children[0];
     if (child->tokenType == TYPE) {
         if (strcmp(child->attr.value, "int") == 0) return createIntType();
         if (strcmp(child->attr.value, "float") == 0) return createFloatType();
     } else if (child->tokenType == STRUCT) {
-        ASTNode* tag = specifier->children[1];
+        ASTNode* tag = NULL;
+        if (specifier->childCount > 1) {
+            tag = specifier->children[1];
+        }
         if (tag != NULL && tag->childCount > 0) {
             char* name = tag->children[0]->attr.value;
             Symbol* sym = lookupSymbol(currentTable, name);
@@ -89,21 +93,47 @@ static Type* getExpressionType(ASTNode* exp) {
         }
     }
     if (exp->nodeType != NODE_EXP) return NULL;
-    ASTNode* op = exp->children[1];
+    ASTNode* op = NULL;
+    if (exp->childCount > 1) {
+        op = exp->children[1];
+    }
     if (op != NULL) {
         switch (op->tokenType) {
             case ASSIGNOP: {
-                Type* leftType = getExpressionType(exp->children[0]);
-                return leftType;
+                if (exp->childCount >= 1) {
+                    Type* leftType = getExpressionType(exp->children[0]);
+                    return leftType;
+                }
+                return NULL;
             }
-            case PLUS: case MINUS: case STAR: case DIV: {
-                Type* leftType = getExpressionType(exp->children[0]);
-                Type* rightType = getExpressionType(exp->children[2]);
-                if (leftType != NULL && rightType != NULL) {
-                    if (leftType->baseType == TYPE_FLOAT || rightType->baseType == TYPE_FLOAT) {
-                        return createFloatType();
+            case PLUS: case STAR: case DIV: {
+                if (exp->childCount >= 3) {
+                    Type* leftType = getExpressionType(exp->children[0]);
+                    Type* rightType = getExpressionType(exp->children[2]);
+                    if (leftType != NULL && rightType != NULL) {
+                        if (leftType->baseType == TYPE_FLOAT || rightType->baseType == TYPE_FLOAT) {
+                            return createFloatType();
+                        }
+                        return createIntType();
                     }
-                    return createIntType();
+                }
+                return NULL;
+            }
+            case MINUS: {
+                if (exp->childCount >= 3) {
+                    Type* leftType = getExpressionType(exp->children[0]);
+                    Type* rightType = getExpressionType(exp->children[2]);
+                    if (leftType != NULL && rightType != NULL) {
+                        if (leftType->baseType == TYPE_FLOAT || rightType->baseType == TYPE_FLOAT) {
+                            return createFloatType();
+                        }
+                        return createIntType();
+                    }
+                } else if (exp->childCount >= 2) {
+                    Type* rightType = getExpressionType(exp->children[1]);
+                    if (rightType != NULL) {
+                        return rightType->baseType == TYPE_FLOAT ? createFloatType() : createIntType();
+                    }
                 }
                 return NULL;
             }
@@ -114,35 +144,40 @@ static Type* getExpressionType(ASTNode* exp) {
                 return createIntType();
             }
             case DOT: {
-                Type* leftType = getExpressionType(exp->children[0]);
-                if (leftType != NULL && leftType->baseType == TYPE_STRUCT) {
-                    ASTNode* fieldNode = exp->children[2];
-                    if (fieldNode != NULL && fieldNode->tokenType == ID) {
-                        Symbol* structSym = lookupSymbol(currentTable, leftType->structName);
-                        if (structSym != NULL && structSym->kind == KIND_STRUCT && structSym->type != NULL && structSym->type->fieldTable != NULL) {
-                            Symbol* field = lookupSymbol(structSym->type->fieldTable, fieldNode->attr.value);
-                            if (field != NULL) {
-                                return field->type;
+                if (exp->childCount >= 3) {
+                    Type* leftType = getExpressionType(exp->children[0]);
+                    if (leftType != NULL && leftType->baseType == TYPE_STRUCT) {
+                        ASTNode* fieldNode = exp->children[2];
+                        if (fieldNode != NULL && fieldNode->tokenType == ID) {
+                            Symbol* structSym = lookupSymbol(currentTable, leftType->structName);
+                            if (structSym != NULL && structSym->kind == KIND_STRUCT && structSym->type != NULL && structSym->type->fieldTable != NULL) {
+                                Symbol* field = lookupSymbol(structSym->type->fieldTable, fieldNode->attr.value);
+                                if (field != NULL) {
+                                    return field->type;
+                                }
                             }
                         }
                     }
-                    return NULL;
                 }
                 return NULL;
             }
             case LB: {
-                Type* leftType = getExpressionType(exp->children[0]);
-                if (leftType != NULL && leftType->baseType == TYPE_ARRAY) {
-                    return leftType->elementType;
+                if (exp->childCount >= 1) {
+                    Type* leftType = getExpressionType(exp->children[0]);
+                    if (leftType != NULL && leftType->baseType == TYPE_ARRAY) {
+                        return leftType->elementType;
+                    }
                 }
                 return NULL;
             }
             case LP: {
-                ASTNode* idNode = exp->children[0];
-                if (idNode != NULL && idNode->tokenType == ID) {
-                    Symbol* sym = lookupSymbol(currentTable, idNode->attr.value);
-                    if (sym != NULL && sym->kind == KIND_FUNCTION) {
-                        return sym->type;
+                if (exp->childCount >= 1) {
+                    ASTNode* idNode = exp->children[0];
+                    if (idNode != NULL && idNode->tokenType == ID) {
+                        Symbol* sym = lookupSymbol(currentTable, idNode->attr.value);
+                        if (sym != NULL && sym->kind == KIND_FUNCTION) {
+                            return sym->type->elementType;
+                        }
                     }
                 }
                 return NULL;
@@ -162,7 +197,10 @@ static int isLValue(ASTNode* exp) {
         return 1;
     }
     if (exp->nodeType == NODE_EXP) {
-        ASTNode* op = exp->children[1];
+        ASTNode* op = NULL;
+        if (exp->childCount > 1) {
+            op = exp->children[1];
+        }
         if (op != NULL) {
             if (op->tokenType == DOT) return 1;
             if (op->tokenType == LB) return 1;
@@ -222,9 +260,13 @@ static void traverseExp(ASTNode* exp) {
     if (exp == NULL) return;
     if (exp->nodeType == NODE_TOKEN) {
         if (exp->tokenType == ID) {
-            Symbol* sym = lookupSymbol(currentTable, exp->attr.value);
+            char* name = exp->attr.value;
+            if (strcmp(name, "read") == 0 || strcmp(name, "write") == 0) {
+                return;
+            }
+            Symbol* sym = lookupSymbol(currentTable, name);
             if (sym == NULL) {
-                fprintf(stderr, "Error type 1 at Line %d: Undefined variable \"%s\".\n", exp->line, exp->attr.value);
+                fprintf(stderr, "Error type 1 at Line %d: Undefined variable \"%s\".\n", exp->line, name);
                 errorCount++;
             }
         }
@@ -232,9 +274,15 @@ static void traverseExp(ASTNode* exp) {
     }
     if (exp->nodeType != NODE_EXP) return;
     
-    ASTNode* op = exp->children[1];
-    int isFuncCall = (op != NULL && op->tokenType == LP);
-    int isDot = (op != NULL && op->tokenType == DOT);
+    ASTNode* op = NULL;
+    int isFuncCall = 0;
+    int isDot = 0;
+    
+    if (exp->childCount > 1) {
+        op = exp->children[1];
+        isFuncCall = (op != NULL && op->tokenType == LP);
+        isDot = (op != NULL && op->tokenType == DOT);
+    }
     
     for (int i = 0; i < exp->childCount; i++) {
         if (isFuncCall && i == 0) continue;
@@ -245,74 +293,116 @@ static void traverseExp(ASTNode* exp) {
     if (op != NULL) {
         switch (op->tokenType) {
             case ASSIGNOP: {
-                if (!isLValue(exp->children[0])) {
-                    fprintf(stderr, "Error type 6 at Line %d: The left-hand side of an assignment must be a variable.\n", exp->line);
-                    errorCount++;
-                }
-                Type* leftType = getExpressionType(exp->children[0]);
-                Type* rightType = getExpressionType(exp->children[2]);
-                if (leftType != NULL && rightType != NULL && !compareTypes(leftType, rightType)) {
-                    fprintf(stderr, "Error type 5 at Line %d: Type mismatched for assignment.\n", exp->line);
-                    errorCount++;
-                }
-                break;
-            }
-            case PLUS: case MINUS: case STAR: case DIV: {
-                Type* leftType = getExpressionType(exp->children[0]);
-                Type* rightType = getExpressionType(exp->children[2]);
-                if (leftType != NULL && rightType != NULL) {
-                    if ((leftType->baseType == TYPE_INT && rightType->baseType == TYPE_FLOAT) ||
-                        (leftType->baseType == TYPE_FLOAT && rightType->baseType == TYPE_INT)) {
-                        fprintf(stderr, "Error type 7 at Line %d: Type mismatched for operands.\n", exp->line);
+                if (exp->childCount >= 3) {
+                    if (!isLValue(exp->children[0])) {
+                        fprintf(stderr, "Error type 6 at Line %d: The left-hand side of an assignment must be a variable.\n", exp->line);
                         errorCount++;
                     }
-                    if (leftType->baseType != TYPE_INT && leftType->baseType != TYPE_FLOAT) {
-                        fprintf(stderr, "Error type 7 at Line %d: Type mismatched for operands.\n", exp->line);
-                        errorCount++;
-                    }
-                    if (rightType->baseType != TYPE_INT && rightType->baseType != TYPE_FLOAT) {
-                        fprintf(stderr, "Error type 7 at Line %d: Type mismatched for operands.\n", exp->line);
+                    Type* leftType = getExpressionType(exp->children[0]);
+                    Type* rightType = getExpressionType(exp->children[2]);
+                    if (leftType != NULL && rightType != NULL && !compareTypes(leftType, rightType)) {
+                        fprintf(stderr, "Error type 5 at Line %d: Type mismatched for assignment.\n", exp->line);
                         errorCount++;
                     }
                 }
                 break;
             }
-            case AND: case OR: case NOT: {
-                Type* leftType = getExpressionType(exp->children[0]);
-                Type* rightType = (op->tokenType != NOT) ? getExpressionType(exp->children[2]) : NULL;
-                if (leftType != NULL && leftType->baseType != TYPE_INT) {
-                    fprintf(stderr, "Error type 7 at Line %d: Type mismatched for operands.\n", exp->line);
-                    errorCount++;
+            case PLUS: case STAR: case DIV: {
+                if (exp->childCount >= 3) {
+                    Type* leftType = getExpressionType(exp->children[0]);
+                    Type* rightType = getExpressionType(exp->children[2]);
+                    if (leftType != NULL && rightType != NULL) {
+                        if ((leftType->baseType == TYPE_INT && rightType->baseType == TYPE_FLOAT) ||
+                            (leftType->baseType == TYPE_FLOAT && rightType->baseType == TYPE_INT)) {
+                            fprintf(stderr, "Error type 7 at Line %d: Type mismatched for operands.\n", exp->line);
+                            errorCount++;
+                        }
+                        if (leftType->baseType != TYPE_INT && leftType->baseType != TYPE_FLOAT) {
+                            fprintf(stderr, "Error type 7 at Line %d: Type mismatched for operands.\n", exp->line);
+                            errorCount++;
+                        }
+                        if (rightType->baseType != TYPE_INT && rightType->baseType != TYPE_FLOAT) {
+                            fprintf(stderr, "Error type 7 at Line %d: Type mismatched for operands.\n", exp->line);
+                            errorCount++;
+                        }
+                    }
                 }
-                if (rightType != NULL && rightType->baseType != TYPE_INT) {
-                    fprintf(stderr, "Error type 7 at Line %d: Type mismatched for operands.\n", exp->line);
-                    errorCount++;
+                break;
+            }
+            case MINUS: {
+                if (exp->childCount >= 3) {
+                    Type* leftType = getExpressionType(exp->children[0]);
+                    Type* rightType = getExpressionType(exp->children[2]);
+                    if (leftType != NULL && rightType != NULL) {
+                        if ((leftType->baseType == TYPE_INT && rightType->baseType == TYPE_FLOAT) ||
+                            (leftType->baseType == TYPE_FLOAT && rightType->baseType == TYPE_INT)) {
+                            fprintf(stderr, "Error type 7 at Line %d: Type mismatched for operands.\n", exp->line);
+                            errorCount++;
+                        }
+                        if (leftType->baseType != TYPE_INT && leftType->baseType != TYPE_FLOAT) {
+                            fprintf(stderr, "Error type 7 at Line %d: Type mismatched for operands.\n", exp->line);
+                            errorCount++;
+                        }
+                        if (rightType->baseType != TYPE_INT && rightType->baseType != TYPE_FLOAT) {
+                            fprintf(stderr, "Error type 7 at Line %d: Type mismatched for operands.\n", exp->line);
+                            errorCount++;
+                        }
+                    }
+                }
+                break;
+            }
+            case AND: case OR: {
+                if (exp->childCount >= 3) {
+                    Type* leftType = getExpressionType(exp->children[0]);
+                    Type* rightType = getExpressionType(exp->children[2]);
+                    if (leftType != NULL && leftType->baseType != TYPE_INT) {
+                        fprintf(stderr, "Error type 7 at Line %d: Type mismatched for operands.\n", exp->line);
+                        errorCount++;
+                    }
+                    if (rightType != NULL && rightType->baseType != TYPE_INT) {
+                        fprintf(stderr, "Error type 7 at Line %d: Type mismatched for operands.\n", exp->line);
+                        errorCount++;
+                    }
+                }
+                break;
+            }
+            case NOT: {
+                if (exp->childCount >= 2) {
+                    Type* leftType = getExpressionType(exp->children[1]);
+                    if (leftType != NULL && leftType->baseType != TYPE_INT) {
+                        fprintf(stderr, "Error type 7 at Line %d: Type mismatched for operands.\n", exp->line);
+                        errorCount++;
+                    }
                 }
                 break;
             }
             case RELOP: {
-                Type* leftType = getExpressionType(exp->children[0]);
-                Type* rightType = getExpressionType(exp->children[2]);
-                if (leftType != NULL && rightType != NULL && !compareTypes(leftType, rightType)) {
-                    fprintf(stderr, "Error type 7 at Line %d: Type mismatched for operands.\n", exp->line);
-                    errorCount++;
+                if (exp->childCount >= 3) {
+                    Type* leftType = getExpressionType(exp->children[0]);
+                    Type* rightType = getExpressionType(exp->children[2]);
+                    if (leftType != NULL && rightType != NULL && !compareTypes(leftType, rightType)) {
+                        fprintf(stderr, "Error type 7 at Line %d: Type mismatched for operands.\n", exp->line);
+                        errorCount++;
+                    }
                 }
                 break;
             }
             case DOT: {
-                Type* leftType = getExpressionType(exp->children[0]);
-                if (leftType == NULL || leftType->baseType != TYPE_STRUCT) {
-                    fprintf(stderr, "Error type 13 at Line %d: Illegal use of \".\".\n", exp->line);
-                    errorCount++;
-                } else {
-                    ASTNode* fieldNode = exp->children[2];
-                    if (fieldNode != NULL && fieldNode->tokenType == ID) {
-                        Symbol* structSym = lookupSymbol(currentTable, leftType->structName);
-                        if (structSym != NULL && structSym->kind == KIND_STRUCT && structSym->type != NULL && structSym->type->fieldTable != NULL) {
-                            Symbol* field = lookupSymbol(structSym->type->fieldTable, fieldNode->attr.value);
-                            if (field == NULL) {
-                                fprintf(stderr, "Error type 14 at Line %d: Non-existent field \"%s\".\n", exp->line, fieldNode->attr.value);
-                                errorCount++;
+                if (exp->childCount >= 3) {
+                    Type* leftType = getExpressionType(exp->children[0]);
+                    if (leftType == NULL || leftType->baseType != TYPE_STRUCT) {
+                        fprintf(stderr, "Error type 13 at Line %d: Illegal use of \".\".\n", exp->line);
+                        errorCount++;
+                    } else {
+                        ASTNode* fieldNode = exp->children[2];
+                        if (fieldNode != NULL && fieldNode->tokenType == ID) {
+                            Symbol* structSym = lookupSymbol(currentTable, leftType->structName);
+                            if (structSym != NULL && structSym->kind == KIND_STRUCT && structSym->type != NULL && structSym->type->fieldTable != NULL) {
+                                Symbol* field = lookupSymbol(structSym->type->fieldTable, fieldNode->attr.value);
+                                if (field == NULL) {
+                                    fprintf(stderr, "Error type 14 at Line %d: Non-existent field \"%s\".\n", exp->line, fieldNode->attr.value);
+                                    errorCount++;
+                                }
                             }
                         }
                     }
@@ -320,42 +410,46 @@ static void traverseExp(ASTNode* exp) {
                 break;
             }
             case LB: {
-                Type* leftType = getExpressionType(exp->children[0]);
-                if (leftType == NULL || leftType->baseType != TYPE_ARRAY) {
-                    char* exprStr = NULL;
-                    ASTNode* left = exp->children[0];
-                    if (left != NULL) {
-                        if (left->tokenType == ID) {
-                            exprStr = left->attr.value;
-                        } else if (left->nodeType == NODE_EXP && left->childCount > 0) {
-                            ASTNode* child = left->children[0];
-                            if (child != NULL && child->tokenType == ID) {
-                                exprStr = child->attr.value;
+                if (exp->childCount >= 3) {
+                    Type* leftType = getExpressionType(exp->children[0]);
+                    if (leftType == NULL || leftType->baseType != TYPE_ARRAY) {
+                        char* exprStr = NULL;
+                        ASTNode* left = exp->children[0];
+                        if (left != NULL) {
+                            if (left->tokenType == ID) {
+                                exprStr = left->attr.value;
+                            } else if (left->nodeType == NODE_EXP && left->childCount > 0) {
+                                ASTNode* child = left->children[0];
+                                if (child != NULL && child->tokenType == ID) {
+                                    exprStr = child->attr.value;
+                                }
                             }
                         }
+                        fprintf(stderr, "Error type 10 at Line %d: \"%s\" is not an array.\n", exp->line, 
+                            exprStr ? exprStr : "expr");
+                        errorCount++;
                     }
-                    fprintf(stderr, "Error type 10 at Line %d: \"%s\" is not an array.\n", exp->line, 
-                        exprStr ? exprStr : "expr");
-                    errorCount++;
-                }
-                Type* indexType = getExpressionType(exp->children[2]);
-                if (indexType != NULL && indexType->baseType != TYPE_INT) {
-                    char indexStr[32];
-                    ASTNode* index = exp->children[2];
-                    if (index != NULL) {
-                        if (index->tokenType == FLOAT) {
-                            sprintf(indexStr, "%g", index->floatValue);
-                        } else if (index->tokenType == ID) {
-                            strncpy(indexStr, index->attr.value, sizeof(indexStr)-1);
-                            indexStr[sizeof(indexStr)-1] = '\0';
-                        } else if (index->nodeType == NODE_EXP && index->childCount > 0) {
-                            ASTNode* child = index->children[0];
-                            if (child != NULL) {
-                                if (child->tokenType == FLOAT) {
-                                    sprintf(indexStr, "%g", child->floatValue);
-                                } else if (child->tokenType == ID) {
-                                    strncpy(indexStr, child->attr.value, sizeof(indexStr)-1);
-                                    indexStr[sizeof(indexStr)-1] = '\0';
+                    Type* indexType = getExpressionType(exp->children[2]);
+                    if (indexType != NULL && indexType->baseType != TYPE_INT) {
+                        char indexStr[32];
+                        ASTNode* index = exp->children[2];
+                        if (index != NULL) {
+                            if (index->tokenType == FLOAT) {
+                                sprintf(indexStr, "%g", index->floatValue);
+                            } else if (index->tokenType == ID) {
+                                strncpy(indexStr, index->attr.value, sizeof(indexStr)-1);
+                                indexStr[sizeof(indexStr)-1] = '\0';
+                            } else if (index->nodeType == NODE_EXP && index->childCount > 0) {
+                                ASTNode* child = index->children[0];
+                                if (child != NULL) {
+                                    if (child->tokenType == FLOAT) {
+                                        sprintf(indexStr, "%g", child->floatValue);
+                                    } else if (child->tokenType == ID) {
+                                        strncpy(indexStr, child->attr.value, sizeof(indexStr)-1);
+                                        indexStr[sizeof(indexStr)-1] = '\0';
+                                    } else {
+                                        strcpy(indexStr, "expr");
+                                    }
                                 } else {
                                     strcpy(indexStr, "expr");
                                 }
@@ -365,62 +459,72 @@ static void traverseExp(ASTNode* exp) {
                         } else {
                             strcpy(indexStr, "expr");
                         }
-                    } else {
-                        strcpy(indexStr, "expr");
+                        fprintf(stderr, "Error type 12 at Line %d: \"%s\" is not an integer.\n", exp->line, indexStr);
+                        errorCount++;
                     }
-                    fprintf(stderr, "Error type 12 at Line %d: \"%s\" is not an integer.\n", exp->line, indexStr);
-                    errorCount++;
                 }
                 break;
             }
             case LP: {
-                ASTNode* idNode = exp->children[0];
-                if (idNode != NULL && idNode->tokenType == ID) {
-                    Symbol* sym = lookupSymbol(currentTable, idNode->attr.value);
-                    if (sym == NULL) {
-                        fprintf(stderr, "Error type 2 at Line %d: Undefined function \"%s\".\n", exp->line, idNode->attr.value);
-                        errorCount++;
-                    } else if (sym->kind != KIND_FUNCTION) {
-                        fprintf(stderr, "Error type 11 at Line %d: \"%s\" is not a function.\n", exp->line, idNode->attr.value);
-                        errorCount++;
-                    } else {
-                        int argCount = 0;
-                        ASTNode* args = exp->children[2];
-                        if (args != NULL && args->nodeType == NODE_ARGS) {
-                            ASTNode* cur = args;
-                            while (cur != NULL && cur->childCount > 0) {
-                                argCount++;
-                                if (cur->childCount >= 3) {
-                                    cur = cur->children[2];
-                                } else {
-                                    break;
-                                }
-                            }
+                if (exp->childCount >= 1) {
+                    ASTNode* idNode = exp->children[0];
+                    if (idNode != NULL && idNode->tokenType == ID) {
+                        char* funcName = idNode->attr.value;
+                        if (strcmp(funcName, "read") == 0 || strcmp(funcName, "write") == 0) {
+                            break;
                         }
-                        if (argCount != sym->paramCount) {
-                            fprintf(stderr, "Error type 9 at Line %d: Function \"%s(int)\" is not applicable for arguments \"(int, int)\".\n", 
-                                exp->line, idNode->attr.value);
+                        Symbol* sym = lookupSymbol(currentTable, funcName);
+                        if (sym == NULL) {
+                            fprintf(stderr, "Error type 2 at Line %d: Undefined function \"%s\".\n", exp->line, funcName);
+                            errorCount++;
+                        } else if (sym->kind != KIND_FUNCTION) {
+                            fprintf(stderr, "Error type 11 at Line %d: \"%s\" is not a function.\n", exp->line, idNode->attr.value);
                             errorCount++;
                         } else {
-                            ASTNode* args = exp->children[2];
+                            int argCount = 0;
+                            ASTNode* args = NULL;
+                            if (exp->childCount > 2) {
+                                args = exp->children[2];
+                            }
                             if (args != NULL && args->nodeType == NODE_ARGS) {
                                 ASTNode* cur = args;
-                                int paramIdx = 0;
-                                while (cur != NULL && cur->childCount > 0 && paramIdx < sym->paramCount) {
-                                    ASTNode* argExp = cur->children[0];
-                                    Type* argType = getExpressionType(argExp);
-                                    Type* paramType = sym->paramTypes[paramIdx];
-                                    if (argType != NULL && paramType != NULL && !compareTypes(argType, paramType)) {
-                                        fprintf(stderr, "Error type 9 at Line %d: Function \"%s(int)\" is not applicable for arguments.\n", 
-                                            exp->line, idNode->attr.value);
-                                        errorCount++;
-                                        break;
-                                    }
-                                    paramIdx++;
+                                while (cur != NULL && cur->childCount > 0) {
+                                    argCount++;
                                     if (cur->childCount >= 3) {
                                         cur = cur->children[2];
                                     } else {
                                         break;
+                                    }
+                                }
+                            }
+                            if (argCount != sym->paramCount) {
+                                fprintf(stderr, "Error type 9 at Line %d: Function \"%s(int)\" is not applicable for arguments \"(int, int)\".\n", 
+                                    exp->line, idNode->attr.value);
+                                errorCount++;
+                            } else {
+                                ASTNode* args2 = NULL;
+                                if (exp->childCount > 2) {
+                                    args2 = exp->children[2];
+                                }
+                                if (args2 != NULL && args2->nodeType == NODE_ARGS) {
+                                    ASTNode* cur = args2;
+                                    int paramIdx = 0;
+                                    while (cur != NULL && cur->childCount > 0 && paramIdx < sym->paramCount) {
+                                        ASTNode* argExp = cur->children[0];
+                                        Type* argType = getExpressionType(argExp);
+                                        Type* paramType = sym->paramTypes[paramIdx];
+                                        if (argType != NULL && paramType != NULL && !compareTypes(argType, paramType)) {
+                                            fprintf(stderr, "Error type 9 at Line %d: Function \"%s(int)\" is not applicable for arguments.\n", 
+                                                exp->line, idNode->attr.value);
+                                            errorCount++;
+                                            break;
+                                        }
+                                        paramIdx++;
+                                        if (cur->childCount >= 3) {
+                                            cur = cur->children[2];
+                                        } else {
+                                            break;
+                                        }
                                     }
                                 }
                             }
@@ -443,7 +547,7 @@ static void traverseStmt(ASTNode* stmt) {
             ASTNode* child = stmt->children[i];
             if (child != NULL) {
                 if (child->tokenType == RETURN) {
-                    if (inFunction && currentReturnType != NULL) {
+                    if (inFunction && currentReturnType != NULL && stmt->childCount > 1) {
                         Type* expType = getExpressionType(stmt->children[1]);
                         if (expType != NULL && !compareTypes(expType, currentReturnType)) {
                             fprintf(stderr, "Error type 8 at Line %d: Type mismatched for return.\n", stmt->line);
@@ -457,9 +561,11 @@ static void traverseStmt(ASTNode* stmt) {
         }
     }
     if (stmt->nodeType == NODE_COMPST) {
-        for (int i = 0; i < stmt->childCount; i++) {
-            traverseStmt(stmt->children[i]);
-            traverseDef(stmt->children[i]);
+        if (stmt->childCount > 1) {
+            traverseDef(stmt->children[1]);
+        }
+        if (stmt->childCount > 2) {
+            traverseStmt(stmt->children[2]);
         }
     }
     if (stmt->nodeType == NODE_STMTLIST) {
@@ -473,37 +579,55 @@ static void traverseStmt(ASTNode* stmt) {
     }
 }
 
-static void traverseDef(ASTNode* def) {
-    if (def == NULL) return;
-    if (def->nodeType == NODE_DEF) {
-        ASTNode* specifier = def->children[0];
-        ASTNode* decList = def->children[1];
-        Type* baseType = getTypeFromSpecifier(specifier);
-        if (decList != NULL && decList->nodeType == NODE_DECLIST) {
-            for (int i = 0; i < decList->childCount; i += 2) {
-                ASTNode* dec = decList->children[i];
-                if (dec != NULL && dec->nodeType == NODE_DEC) {
+static void processDecList(ASTNode* decList, Type* baseType, int line) {
+    if (decList == NULL) return;
+    
+    if (decList->nodeType == NODE_DECLIST) {
+        for (int i = 0; i < decList->childCount; i += 2) {
+            ASTNode* dec = decList->children[i];
+            if (dec != NULL) {
+                if (dec->nodeType == NODE_DEC) {
                     ASTNode* varDec = dec->children[0];
                     char* name = getVarDecName(varDec);
                     if (name != NULL) {
                         Symbol* existing = lookupSymbol(currentTable, name);
                         if (existing != NULL) {
-                            fprintf(stderr, "Error type 3 at Line %d: Redefined variable \"%s\".\n", def->line, name);
+                            fprintf(stderr, "Error type 3 at Line %d: Redefined variable \"%s\".\n", line, name);
                             errorCount++;
                         } else {
                             Symbol* structSym = lookupSymbol(currentTable, name);
                             if (structSym != NULL && structSym->kind == KIND_STRUCT) {
-                                fprintf(stderr, "Error type 3 at Line %d: Redefined variable \"%s\".\n", def->line, name);
+                                fprintf(stderr, "Error type 3 at Line %d: Redefined variable \"%s\".\n", line, name);
                                 errorCount++;
                             } else {
                                 Type* varType = getTypeFromVarDec(varDec, baseType);
-                                Symbol* sym = createSymbol(name, KIND_VARIABLE, varType, def->line);
+                                Symbol* sym = createSymbol(name, KIND_VARIABLE, varType, line);
                                 insertSymbol(currentTable, sym);
                             }
                         }
                     }
+                } else if (dec->nodeType == NODE_DECLIST) {
+                    processDecList(dec, baseType, line);
                 }
             }
+        }
+    }
+}
+
+static void traverseDef(ASTNode* def) {
+    if (def == NULL) return;
+    if (def->nodeType == NODE_DEF) {
+        ASTNode* specifier = NULL;
+        ASTNode* decList = NULL;
+        if (def->childCount > 0) {
+            specifier = def->children[0];
+        }
+        if (def->childCount > 1) {
+            decList = def->children[1];
+        }
+        Type* baseType = getTypeFromSpecifier(specifier);
+        if (decList != NULL) {
+            processDecList(decList, baseType, def->line);
         }
     }
     if (def->nodeType == NODE_DEFLIST) {
@@ -514,20 +638,58 @@ static void traverseDef(ASTNode* def) {
     }
 }
 
-static void collectParams(ASTNode* varList, Symbol* funcSym) {
+static void collectParamTypes(ASTNode* varList, Symbol* funcSym) {
     if (varList == NULL || funcSym == NULL) return;
     
     if (varList->nodeType == NODE_VARLIST) {
-        ASTNode* paramDec = varList->children[0];
+        ASTNode* paramDec = NULL;
+        if (varList->childCount > 0) {
+            paramDec = varList->children[0];
+        }
         if (paramDec != NULL && paramDec->nodeType == NODE_PARAMDEC) {
-            ASTNode* specifier = paramDec->children[0];
-            ASTNode* varDec = paramDec->children[1];
+            ASTNode* specifier = NULL;
+            ASTNode* varDec = NULL;
+            if (paramDec->childCount > 0) {
+                specifier = paramDec->children[0];
+            }
+            if (paramDec->childCount > 1) {
+                varDec = paramDec->children[1];
+            }
             Type* paramType = getTypeFromSpecifier(specifier);
             char* name = getVarDecName(varDec);
             if (name != NULL) {
                 Type* fullType = getTypeFromVarDec(varDec, paramType);
                 funcSym->paramTypes[funcSym->paramCount] = fullType;
                 funcSym->paramCount++;
+            }
+        }
+        if (varList->childCount >= 3) {
+            collectParamTypes(varList->children[2], funcSym);
+        }
+    }
+}
+
+static void collectParams(ASTNode* varList, Symbol* funcSym) {
+    if (varList == NULL || funcSym == NULL) return;
+    
+    if (varList->nodeType == NODE_VARLIST) {
+        ASTNode* paramDec = NULL;
+        if (varList->childCount > 0) {
+            paramDec = varList->children[0];
+        }
+        if (paramDec != NULL && paramDec->nodeType == NODE_PARAMDEC) {
+            ASTNode* specifier = NULL;
+            ASTNode* varDec = NULL;
+            if (paramDec->childCount > 0) {
+                specifier = paramDec->children[0];
+            }
+            if (paramDec->childCount > 1) {
+                varDec = paramDec->children[1];
+            }
+            Type* paramType = getTypeFromSpecifier(specifier);
+            char* name = getVarDecName(varDec);
+            if (name != NULL) {
+                Type* fullType = getTypeFromVarDec(varDec, paramType);
                 Symbol* paramSym = createSymbol(name, KIND_PARAMETER, fullType, paramDec->line);
                 insertSymbol(currentTable, paramSym);
             }
@@ -541,13 +703,28 @@ static void collectParams(ASTNode* varList, Symbol* funcSym) {
 static void traverseExtDef(ASTNode* extDef) {
     if (extDef == NULL) return;
     if (extDef->nodeType == NODE_EXTDEF) {
-        ASTNode* specifier = extDef->children[0];
-        ASTNode* extDecList = extDef->children[1];
+        ASTNode* specifier = NULL;
+        ASTNode* extDecList = NULL;
+        if (extDef->childCount > 0) {
+            specifier = extDef->children[0];
+        }
+        if (extDef->childCount > 1) {
+            extDecList = extDef->children[1];
+        }
         
         if (specifier != NULL && specifier->nodeType == NODE_STRUCTSPECIFIER) {
-            ASTNode* optTag = specifier->children[1];
-            ASTNode* lc = specifier->children[2];
-            ASTNode* defList = specifier->children[3];
+            ASTNode* optTag = NULL;
+            ASTNode* lc = NULL;
+            ASTNode* defList = NULL;
+            if (specifier->childCount > 1) {
+                optTag = specifier->children[1];
+            }
+            if (specifier->childCount > 2) {
+                lc = specifier->children[2];
+            }
+            if (specifier->childCount > 3) {
+                defList = specifier->children[3];
+            }
             
             if (optTag != NULL && optTag->nodeType == NODE_OPTTAG && optTag->childCount > 0) {
                 char* name = optTag->children[0]->attr.value;
@@ -570,8 +747,14 @@ static void traverseExtDef(ASTNode* extDef) {
         
         if (extDecList != NULL) {
             if (extDecList->nodeType == NODE_FUNDEC) {
-                ASTNode* idNode = extDecList->children[0];
-                ASTNode* varList = extDecList->children[2];
+                ASTNode* idNode = NULL;
+                ASTNode* varList = NULL;
+                if (extDecList->childCount > 0) {
+                    idNode = extDecList->children[0];
+                }
+                if (extDecList->childCount > 2) {
+                    varList = extDecList->children[2];
+                }
                 int isDecl = 0;
                 if (extDef->childCount >= 3) {
                     ASTNode* lastChild = extDef->children[2];
@@ -589,7 +772,7 @@ static void traverseExtDef(ASTNode* extDef) {
                     Symbol* funcSym = createSymbol(name, KIND_FUNCTION, funcType, extDef->line);
                     funcSym->isDeclaration = isDecl ? 1 : 0;
                     if (varList != NULL && varList->nodeType == NODE_VARLIST) {
-                        collectParams(varList, funcSym);
+                        collectParamTypes(varList, funcSym);
                     }
                     
                     if (isDecl) {
@@ -642,13 +825,20 @@ static void traverseExtDef(ASTNode* extDef) {
                                 
                                 Type* savedReturnType = currentReturnType;
                                 int savedInFunction = inFunction;
+                                SymbolTable* savedTable = currentTable;
                                 currentReturnType = returnType;
                                 inFunction = 1;
+                                currentTable = createSymbolTable(savedTable);
+                                
+                                if (varList != NULL && varList->nodeType == NODE_VARLIST) {
+                                    collectParams(varList, funcSym);
+                                }
                                 
                                 if (extDef->childCount >= 3 && extDef->children[2] != NULL && extDef->children[2]->nodeType == NODE_COMPST) {
                                     traverseStmt(extDef->children[2]);
                                 }
                                 
+                                currentTable = savedTable;
                                 currentReturnType = savedReturnType;
                                 inFunction = savedInFunction;
                             }
@@ -660,13 +850,20 @@ static void traverseExtDef(ASTNode* extDef) {
                             
                             Type* savedReturnType = currentReturnType;
                             int savedInFunction = inFunction;
+                            SymbolTable* savedTable = currentTable;
                             currentReturnType = returnType;
                             inFunction = 1;
-                            
-                            if (extDef->childCount >= 3 && extDef->children[2] != NULL && extDef->children[2]->nodeType == NODE_COMPST) {
-                                traverseStmt(extDef->children[2]);
-                            }
-                            
+                            currentTable = createSymbolTable(savedTable);
+                                
+                                if (varList != NULL && varList->nodeType == NODE_VARLIST) {
+                                    collectParams(varList, funcSym);
+                                }
+                                
+                                if (extDef->childCount >= 3 && extDef->children[2] != NULL && extDef->children[2]->nodeType == NODE_COMPST) {
+                                    traverseStmt(extDef->children[2]);
+                                }
+                                
+                                currentTable = savedTable;
                             currentReturnType = savedReturnType;
                             inFunction = savedInFunction;
                         }

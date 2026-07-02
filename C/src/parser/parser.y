@@ -28,7 +28,8 @@ void yyerror(const char* msg) {
 %token <strVal> ID TYPE
 %token <intVal> INT
 %token <floatVal> FLOAT
-%token SEMI COMMA ASSIGNOP RELOP PLUS MINUS STAR DIV AND OR DOT NOT
+%token <strVal> RELOP
+%token SEMI COMMA ASSIGNOP PLUS MINUS STAR DIV AND OR DOT NOT
 %token LP RP LB RB LC RC STRUCT RETURN IF ELSE WHILE
 
 %type <node> Program ExtDefList ExtDef ExtDecList
@@ -142,7 +143,7 @@ Dec : VarDec { $$ = createNode(NODE_DEC, $1->line); addChild($$, $1); }
 Exp : Exp ASSIGNOP Exp { $$ = createNode(NODE_EXP, $1->line); addChild($$, $1); addChild($$, createToken(@2.first_line, ASSIGNOP)); addChild($$, $3); }
     | Exp AND Exp { $$ = createNode(NODE_EXP, $1->line); addChild($$, $1); addChild($$, createToken(@2.first_line, AND)); addChild($$, $3); }
     | Exp OR Exp { $$ = createNode(NODE_EXP, $1->line); addChild($$, $1); addChild($$, createToken(@2.first_line, OR)); addChild($$, $3); }
-    | Exp RELOP Exp { $$ = createNode(NODE_EXP, $1->line); addChild($$, $1); addChild($$, createToken(@2.first_line, RELOP)); addChild($$, $3); }
+    | Exp RELOP Exp { $$ = createNode(NODE_EXP, $1->line); addChild($$, $1); addChild($$, createTokenStr(@2.first_line, RELOP, $2)); addChild($$, $3); }
     | Exp PLUS Exp { $$ = createNode(NODE_EXP, $1->line); addChild($$, $1); addChild($$, createToken(@2.first_line, PLUS)); addChild($$, $3); }
     | Exp MINUS Exp { $$ = createNode(NODE_EXP, $1->line); addChild($$, $1); addChild($$, createToken(@2.first_line, MINUS)); addChild($$, $3); }
     | Exp STAR Exp { $$ = createNode(NODE_EXP, $1->line); addChild($$, $1); addChild($$, createToken(@2.first_line, STAR)); addChild($$, $3); }

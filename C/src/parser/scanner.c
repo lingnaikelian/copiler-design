@@ -29,7 +29,9 @@ int yylex() {
         case TOKEN_SEMI: return SEMI;
         case TOKEN_COMMA: return COMMA;
         case TOKEN_ASSIGNOP: return ASSIGNOP;
-        case TOKEN_RELOP: return RELOP;
+        case TOKEN_RELOP:
+            yylval.strVal = strdup(currentToken.value);
+            return RELOP;
         case TOKEN_PLUS: return PLUS;
         case TOKEN_MINUS: return MINUS;
         case TOKEN_STAR: return STAR;

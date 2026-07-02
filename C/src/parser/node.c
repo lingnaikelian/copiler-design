@@ -3,8 +3,26 @@
 #include <string.h>
 #include <stdlib.h>
 
+static void* safeMalloc(size_t size) {
+    void* ptr = malloc(size);
+    if (ptr == NULL) {
+        fprintf(stderr, "Memory allocation failed\n");
+        exit(1);
+    }
+    return ptr;
+}
+
+static void* safeRealloc(void* ptr, size_t size) {
+    void* newPtr = realloc(ptr, size);
+    if (newPtr == NULL) {
+        fprintf(stderr, "Memory reallocation failed\n");
+        exit(1);
+    }
+    return newPtr;
+}
+
 ASTNode* createNode(NodeType type, int line) {
-    ASTNode* node = (ASTNode*)malloc(sizeof(ASTNode));
+    ASTNode* node = (ASTNode*)safeMalloc(sizeof(ASTNode));
     node->nodeType = type;
     node->line = line;
     node->tokenType = 0;
@@ -18,7 +36,7 @@ ASTNode* createNode(NodeType type, int line) {
 
 void addChild(ASTNode* parent, ASTNode* child) {
     if (child == NULL) return;
-    parent->children = (ASTNode**)realloc(parent->children,
+    parent->children = (ASTNode**)safeRealloc(parent->children,
                                           (parent->childCount + 1) * sizeof(ASTNode*));
     parent->children[parent->childCount++] = child;
 }

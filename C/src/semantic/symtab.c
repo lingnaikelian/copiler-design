@@ -2,8 +2,17 @@
 
 SymbolTable* currentTable = NULL;
 
+static void* safeMalloc(size_t size) {
+    void* ptr = malloc(size);
+    if (ptr == NULL) {
+        fprintf(stderr, "Memory allocation failed\n");
+        exit(1);
+    }
+    return ptr;
+}
+
 Type* createIntType() {
-    Type* t = (Type*)malloc(sizeof(Type));
+    Type* t = (Type*)safeMalloc(sizeof(Type));
     t->baseType = TYPE_INT;
     t->arraySize = 0;
     t->elementType = NULL;
@@ -12,7 +21,7 @@ Type* createIntType() {
 }
 
 Type* createFloatType() {
-    Type* t = (Type*)malloc(sizeof(Type));
+    Type* t = (Type*)safeMalloc(sizeof(Type));
     t->baseType = TYPE_FLOAT;
     t->arraySize = 0;
     t->elementType = NULL;
@@ -21,7 +30,7 @@ Type* createFloatType() {
 }
 
 Type* createArrayType(Type* elementType, int size) {
-    Type* t = (Type*)malloc(sizeof(Type));
+    Type* t = (Type*)safeMalloc(sizeof(Type));
     t->baseType = TYPE_ARRAY;
     t->arraySize = size;
     t->elementType = elementType;
@@ -30,7 +39,7 @@ Type* createArrayType(Type* elementType, int size) {
 }
 
 Type* createStructType(char* name) {
-    Type* t = (Type*)malloc(sizeof(Type));
+    Type* t = (Type*)safeMalloc(sizeof(Type));
     t->baseType = TYPE_STRUCT;
     t->arraySize = 0;
     t->elementType = NULL;
@@ -40,7 +49,7 @@ Type* createStructType(char* name) {
 }
 
 Type* createFunctionType(Type* returnType, int paramCount, Type** paramTypes) {
-    Type* t = (Type*)malloc(sizeof(Type));
+    Type* t = (Type*)safeMalloc(sizeof(Type));
     t->baseType = TYPE_FUNCTION;
     t->arraySize = paramCount;
     t->elementType = returnType;
@@ -92,7 +101,7 @@ const char* typeToString(Type* type) {
 }
 
 SymbolTable* createSymbolTable(SymbolTable* parent) {
-    SymbolTable* table = (SymbolTable*)malloc(sizeof(SymbolTable));
+    SymbolTable* table = (SymbolTable*)safeMalloc(sizeof(SymbolTable));
     table->head = NULL;
     table->parent = parent;
     return table;
@@ -128,14 +137,14 @@ void deleteSymbolTable(SymbolTable* table) {
 }
 
 Symbol* createSymbol(char* name, SymbolKind kind, Type* type, int line) {
-    Symbol* s = (Symbol*)malloc(sizeof(Symbol));
+    Symbol* s = (Symbol*)safeMalloc(sizeof(Symbol));
     s->name = strdup(name);
     s->kind = kind;
     s->type = type;
     s->line = line;
     s->next = NULL;
     s->paramCount = 0;
-    s->paramTypes = (Type**)malloc(sizeof(Type*) * 32);
+    s->paramTypes = (Type**)safeMalloc(sizeof(Type*) * 32);
     s->isDeclaration = 0;
     return s;
 }
